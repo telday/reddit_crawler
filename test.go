@@ -16,14 +16,18 @@ func main(){
 
 	kill, errs := make(chan bool), make(chan error)
 
-	posts, stream_errors := streams.SubredditComments(bot, kill, errs, "askreddit")
+	comments, stream_errors := streams.SubredditComments(bot, kill, errs, "askreddit")
+
+	if stream_errors == nil {
+		fmt.Printf("Error getting subreddit stream: %e\n", stream_errors)
+	}
 
 	for {
 		select {
-		case tmp_err := <-stream_errors:
+		case tmp_err := <-errs:
 			fmt.Println(tmp_err)
-		case comment := <-posts:
-			fmt.Println(comment)
+		case comment := <-comments:
+			fmt.Println(comment.Body)
 		}
 	}
 
