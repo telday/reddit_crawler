@@ -1,0 +1,1 @@
+https://www.reddit.com/api/v1/authorize?client_id=2U-pdXadD7OzzA&response_type=code&state=RANDOM_STRING&redirect_uri=http://127.0.0.1&duration=temporary&scope=read
