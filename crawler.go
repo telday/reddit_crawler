@@ -8,19 +8,50 @@ import (
 
     "github.com/turnage/graw/reddit"
     "github.com/turnage/graw/streams"
+    "gorm.io/gorm"
+    "gorm.io/driver/sqlite"
 )
+
+type Subreddit struct {
+	Name string `gorm:"primaryKey"`
+	DisplayName string
+}
 
 const MAX_COMMENTS float64 = 1e50
 var reddit_re, _ = regexp.Compile("r/[a-zA-Z0-9]+")
+var db, err = gorm.Open(sqlite.Open("subreddits.db"), &gorm.Config{
+	SkipDefaultTransaction: true,
+})
 
-func commentHasSubreddit(comment *reddit.Comment) string{
+func commentHasSubreddit(comment *reddit.Comment) []string{
     slice := reddit_re.FindAllString(comment.Body, -1)
+	var subreddits []string
     for i := 0; i < len(slice); i++ {
         if strings.ToLower(comment.Subreddit) != strings.ToLower(slice[i][2:]){
-            println(slice[i][2:])
+			subreddits = append(subreddits, slice[i][2:])
         }
     }
-    return ""
+    return subreddits
+}
+
+func insertIntoDatabase(name string){
+	var dbSubs Subreddit
+	transx := db.Begin()
+	nameLower := strings.ToLower(name)
+	res := transx.Where("name = ?", nameLower).First(&dbSubs)
+	if res.RowsAffected > 0 {
+		transx.Rollback()
+	}else{
+		subreddit := Subreddit{Name: nameLower, DisplayName: name}
+		err := transx.Create(&subreddit).Error
+		if err != nil {
+			fmt.Printf("Error adding subreddit %s to database\n", name)
+			transx.Rollback()
+		}else{
+			fmt.Printf("Adding %s to database\n", name)
+			transx.Commit()
+		}
+	}
 }
 
 func crawlSubreddit(bot *reddit.Bot, subreddit string, wg *sync.WaitGroup) int {
@@ -30,7 +61,7 @@ func crawlSubreddit(bot *reddit.Bot, subreddit string, wg *sync.WaitGroup) int {
 
     comments, err := streams.SubredditComments(*bot, kill, stream_errors, subreddit)
 
-    if err == nil {
+    if err != nil {
         fmt.Println("Error getting comments stream")
     }
     var counter float64 = 0
@@ -39,7 +70,11 @@ func crawlSubreddit(bot *reddit.Bot, subreddit string, wg *sync.WaitGroup) int {
         case s_error := <-stream_errors:
             fmt.Printf("Stream Error: %s\n", s_error)
         case comment := <-comments:
-            commentHasSubreddit(comment)
+			subreddits := commentHasSubreddit(comment)
+
+			for i := 0; i < len(subreddits); i++ {
+				insertIntoDatabase(subreddits[i])
+			}
         }
     }
     return 0
